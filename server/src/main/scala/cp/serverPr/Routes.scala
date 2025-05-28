@@ -1,5 +1,4 @@
 package cp.serverPr
-
 import cats.effect.IO
 import org.http4s._
 import org.http4s.dsl.io._
@@ -10,47 +9,50 @@ object Routes {
   private val state = new ServerState()
 
   val routes: IO[HttpRoutes[IO]] =
-   IO{HttpRoutes.of[IO] {
+    IO{HttpRoutes.of[IO] {
+      // React to a "status" request
+      case GET -> Root / "status" =>
+        Ok(state.toHtml)
+          .map(addCORSHeaders)
+          .map(_.withContentType(org.http4s.headers.`Content-Type`(MediaType.text.html)))
 
-     // React to a "status" request
-     case GET -> Root / "status" =>
-       Ok(state.toHtml)
-         .map(addCORSHeaders)
-         .map(_.withContentType(org.http4s.headers.`Content-Type`(MediaType.text.html)))
+      // React to a "run-process" request
+      // Each request runs concurrently without blocking others
+      case req@GET -> Root / "run-process" =>
+        val cmdOpt = req.uri.query.params.get("cmd")
+        val userIp = req.remoteAddr.getOrElse("unknown")
 
+        logger.debug(s">>> got run-process!")
+        logger.debug(s">>> Cmd: ${cmdOpt}")
+        logger.debug(s">>> userIP: $userIp")
 
-     // React to a "run-process" request
-     case req@GET -> Root / "run-process" =>
-       val cmdOpt = req.uri.query.params.get("cmd")
-       val userIp = req.remoteAddr.getOrElse("unknown")
+        cmdOpt match {
+          case Some(cmd) =>
+            // Run the process asynchronously using IO
+            runProcessAsync(cmd, userIp.toString)
+              .flatMap(result => Ok(result))
+              .map(addCORSHeaders)
+          case None =>
+            BadRequest("⚠️ Command not provided. Use /run-process?cmd=<your_command>")
+              .map(addCORSHeaders)
+        }
+    }}
 
-       //// printing to the terminal instead of a logging file
-       //println(">>> got run-process!")
-       //println(s">>> Cmd: ${cmdOpt}")
-       //println(s">>> userIP: $userIp")
+  /** Run a process asynchronously without blocking other requests. */
+  private def runProcessAsync(cmd: String, userIp: String): IO[String] = {
+    IO.blocking {
+      // Thread-safe counter increment
+      val requestId = state.incrementCounter()
+      logger.info(s"🔹 Starting process ($requestId) for user $userIp: $cmd")
 
-       cmdOpt match {
-         case Some(cmd) =>
-           Ok(runProcess(cmd, userIp.toString))
-             .map(addCORSHeaders)
+      // TODO: Replace this with actual process execution
+      // This sleep simulates a long-running process
+      Thread.sleep(2000) // Simulating 2 seconds of work
 
-         case None =>
-           BadRequest("⚠️ Command not provided. Use /run-process?cmd=<your_command>")
-             .map(addCORSHeaders)
-       }
-   }}
-
-
-  /** Run a given process and collect its output. */
-  private def runProcess(cmd: String, userIp: String): String = {
-    state.counter += 1
-    logger.info(s"🔹 Starting process (${state.counter}) for user $userIp: $cmd")
-
-    // TODO:Run process here. The `Thread.sleep` should be removed.
-    Thread.sleep(1000)
-    val output: String = s"[${state.counter}] Result from running $cmd for user $userIp"
-
-    output
+      val output = s"[$requestId] Result from running '$cmd' for user $userIp"
+      logger.info(s"✅ Completed process ($requestId): $output")
+      output
+    }
   }
 
   /** Add extra headers, required by the client. */
@@ -63,5 +65,3 @@ object Routes {
     )
   }
 }
-
-

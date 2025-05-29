@@ -25,7 +25,7 @@ object Server {
       println("Choose a concurrency implementation:\n")
       println("1. Synchronized Blocks")
       println("2. Lock-Free Programming")
-      println("4. Race Condition Demo")
+      println("3. Race Condition Demo")
       println("="*60)
       println("Enter your choice (1-3): ")
       System.out.flush()

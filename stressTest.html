@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Stress Test - Race Condition Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .config-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            border-left: 4px solid #667eea;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #2c3e50;
+        }
+
+        input, select {
+            padding: 10px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .status-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #e1e8ed;
+        }
+
+        .status-title {
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+
+        .status-content {
+            font-family: 'Courier New', monospace;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #e1e8ed;
+            min-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .log-error {
+            color: #dc3545;
+            font-weight: 600;
+        }
+
+        .log-success {
+            color: #28a745;
+        }
+
+        .log-info {
+            color: #17a2b8;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #e1e8ed;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+
+        .inconsistency-detected {
+            background: #f8d7da !important;
+            border-color: #dc3545 !important;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            border: 1px solid #dc3545;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Server Stress Test</h1>
+        <div class="alert alert-warning">
+            <strong>⚠️ Race Condition Demo:</strong> This tool will demonstrate how concurrent requests expose thread safety issues in your non-thread-safe server implementation.
+        </div>
+
+        <div class="config-section">
+            <h3>Test Configuration</h3>
+            <div class="config-grid">
+                <div class="form-group">
+                    <label for="serverUrl">Server URL:</label>
+                    <input type="text" id="serverUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+                </div>
+
+                <div class="form-group">
+                    <label for="concurrentRequests">Concurrent Requests:</label>
+                    <input type="number" id="concurrentRequests" value="50" min="1" max="200">
+                </div>
+
+                <div class="form-group">
+                    <label for="requestDelay">Delay Between Batches (ms):</label>
+                    <input type="number" id="requestDelay" value="100" min="0" max="5000">
+                </div>
+
+                <div class="form-group">
+                    <label for="testCommand">Test Command:</label>
+                    <select id="testCommand">
+                        <option value="sleep 0.1">sleep 0.1 (Fast)</option>
+                        <option value="sleep 0.5" selected>sleep 0.5 (Medium)</option>
+                        <option value="sleep 1">sleep 1 (Slow)</option>
+                        <option value="echo 'test'">echo 'test' (Instant)</option>
+                        <option value="date">date (Instant)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" onclick="startStressTest()">🚀 Start Stress Test</button>
+            <button class="btn-secondary" onclick="checkServerStatus()">📊 Check Server Status</button>
+            <button class="btn-success" onclick="runInconsistencyCheck()">🔍 Check for Inconsistencies</button>
+            <button class="btn-danger" onclick="clearLogs()">🗑️ Clear Logs</button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card" id="totalRequestsCard">
+                <div class="stat-value" id="totalRequests">0</div>
+                <div class="stat-label">Total Requests</div>
+            </div>
+            <div class="stat-card" id="successfulCard">
+                <div class="stat-value" id="successful">0</div>
+                <div class="stat-label">Successful</div>
+            </div>
+            <div class="stat-card" id="failedCard">
+                <div class="stat-value" id="failed">0</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card" id="inconsistenciesCard">
+                <div class="stat-value" id="inconsistencies">0</div>
+                <div class="stat-label">Inconsistencies</div>
+            </div>
+        </div>
+
+        <div class="status-grid">
+            <div class="status-panel">
+                <div class="status-title">📈 Server Status</div>
+                <div class="status-content" id="serverStatus">
+                    Click "Check Server Status" to view current state...
+                </div>
+            </div>
+
+            <div class="status-panel">
+                <div class="status-title">📝 Test Log</div>
+                <div class="status-content" id="testLog">
+                    Ready to start stress testing...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let testStats = {
+            totalRequests: 0,
+            successful: 0,
+            failed: 0,
+            inconsistencies: 0
+        };
+
+        let isTestRunning = false;
+        let serverSnapshots = [];
+
+        function updateStats() {
+            document.getElementById('totalRequests').textContent = testStats.totalRequests;
+            document.getElementById('successful').textContent = testStats.successful;
+            document.getElementById('failed').textContent = testStats.failed;
+            document.getElementById('inconsistencies').textContent = testStats.inconsistencies;
+
+            // Highlight inconsistencies
+            const inconsistencyCard = document.getElementById('inconsistenciesCard');
+            if (testStats.inconsistencies > 0) {
+                inconsistencyCard.classList.add('inconsistency-detected');
+            } else {
+                inconsistencyCard.classList.remove('inconsistency-detected');
+            }
+        }
+
+        function logMessage(message, type = 'info') {
+            const logElement = document.getElementById('testLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        async function checkServerStatus() {
+            try {
+                const serverUrl = document.getElementById('serverUrl').value;
+                const response = await fetch(`${serverUrl}/status`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const statusHtml = await response.text();
+                document.getElementById('serverStatus').innerHTML = statusHtml;
+
+                // Parse and store snapshot for inconsistency detection
+                const snapshot = parseServerStatus(statusHtml);
+                serverSnapshots.push({
+                    timestamp: Date.now(),
+                    ...snapshot
+                });
+
+                // Keep only last 100 snapshots
+                if (serverSnapshots.length > 100) {
+                    serverSnapshots = serverSnapshots.slice(-100);
+                }
+
+                logMessage('Server status updated successfully', 'success');
+                return snapshot;
+            } catch (error) {
+                logMessage(`Failed to check server status: ${error.message}`, 'error');
+                document.getElementById('serverStatus').textContent = `Error: ${error.message}`;
+                return null;
+            }
+        }
+
+        function parseServerStatus(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const extractNumber = (text, label) => {
+                const regex = new RegExp(`<strong>${label}:</strong>\\s*(\\d+)`);
+                const match = text.match(regex);
+                return match ? parseInt(match[1]) : 0;
+            };
+
+            return {
+                total: extractNumber(html, 'counter'),
+                queued: extractNumber(html, 'queued'),
+                running: extractNumber(html, 'running'),
+                completed: extractNumber(html, 'completed'),
+                maxConcurrent: extractNumber(html, 'max concurrent')
+            };
+        }
+
+        async function sendTestRequest(requestId, command) {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const startTime = Date.now();
+
+            try {
+                const response = await fetch(`${serverUrl}/run-process?cmd=${encodeURIComponent(command)}`);
+                const duration = Date.now() - startTime;
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const result = await response.text();
+                testStats.successful++;
+                logMessage(`Request ${requestId} completed in ${duration}ms`, 'success');
+                return { success: true, duration, result };
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                testStats.failed++;
+                logMessage(`Request ${requestId} failed after ${duration}ms: ${error.message}`, 'error');
+                return { success: false, duration, error: error.message };
+            }
+        }
+
+        async function startStressTest() {
+            if (isTestRunning) {
+                logMessage('Test is already running!', 'error');
+                return;
+            }
+
+            isTestRunning = true;
+            const concurrentRequests = parseInt(document.getElementById('concurrentRequests').value);
+            const requestDelay = parseInt(document.getElementById('requestDelay').value);
+            const testCommand = document.getElementById('testCommand').value;
+
+            logMessage(`Starting stress test with ${concurrentRequests} concurrent requests`, 'info');
+            logMessage(`Command: ${testCommand}`, 'info');
+
+            // Take initial server status snapshot
+            await checkServerStatus();
+
+            // Create batches of concurrent requests
+            const batchSize = Math.min(concurrentRequests, 20); // Limit browser concurrency
+            const numBatches = Math.ceil(concurrentRequests / batchSize);
+
+            for (let batch = 0; batch < numBatches; batch++) {
+                if (!isTestRunning) break;
+
+                const batchStart = batch * batchSize;
+                const batchEnd = Math.min(batchStart + batchSize, concurrentRequests);
+                const batchRequests = [];
+
+                logMessage(`Starting batch ${batch + 1}/${numBatches} (requests ${batchStart + 1}-${batchEnd})`, 'info');
+
+                // Launch batch of concurrent requests
+                for (let i = batchStart; i < batchEnd; i++) {
+                    testStats.totalRequests++;
+                    batchRequests.push(sendTestRequest(i + 1, testCommand));
+                }
+
+                // Wait for batch completion
+                await Promise.allSettled(batchRequests);
+                updateStats();
+
+                // Check server status after each batch
+                await checkServerStatus();
+
+                // Delay between batches
+                if (requestDelay > 0 && batch < numBatches - 1) {
+                    await new Promise(resolve => setTimeout(resolve, requestDelay));
+                }
+            }
+
+            // Final status check
+            setTimeout(async () => {
+                await checkServerStatus();
+                await runInconsistencyCheck();
+                logMessage('Stress test completed!', 'success');
+                isTestRunning = false;
+            }, 1000);
+        }
+
+        function runInconsistencyCheck() {
+            if (serverSnapshots.length < 2) {
+                logMessage('Need at least 2 server status snapshots to check for inconsistencies', 'error');
+                return;
+            }
+
+            let inconsistencyCount = 0;
+
+            serverSnapshots.forEach((snapshot, index) => {
+                // Check basic math consistency: total = running + completed + queued
+                const calculatedTotal = snapshot.running + snapshot.completed + snapshot.queued;
+                if (calculatedTotal !== snapshot.total) {
+                    inconsistencyCount++;
+                    logMessage(`Inconsistency detected in snapshot ${index + 1}: total=${snapshot.total} but running+completed+queued=${calculatedTotal}`, 'error');
+                }
+
+                // Check for negative values
+                Object.entries(snapshot).forEach(([key, value]) => {
+                    if (value < 0) {
+                        inconsistencyCount++;
+                        logMessage(`Inconsistency detected: ${key} has negative value ${value}`, 'error');
+                    }
+                });
+
+                // Check if running count seems reasonable
+                if (snapshot.running > snapshot.total) {
+                    inconsistencyCount++;
+                    logMessage(`Inconsistency detected: running (${snapshot.running}) > total (${snapshot.total})`, 'error');
+                }
+
+                // Check if completed > total
+                if (snapshot.completed > snapshot.total) {
+                    inconsistencyCount++;
+                    logMessage(`Inconsistency detected: completed (${snapshot.completed}) > total (${snapshot.total})`, 'error');
+                }
+            });
+
+            // Check for non-monotonic total counter
+            for (let i = 1; i < serverSnapshots.length; i++) {
+                if (serverSnapshots[i].total < serverSnapshots[i-1].total) {
+                    inconsistencyCount++;
+                    logMessage(`Inconsistency detected: total counter decreased from ${serverSnapshots[i-1].total} to ${serverSnapshots[i].total}`, 'error');
+                }
+            }
+
+            testStats.inconsistencies = inconsistencyCount;
+            updateStats();
+
+            if (inconsistencyCount === 0) {
+                logMessage('No inconsistencies detected in server state', 'success');
+            } else {
+                logMessage(`Found ${inconsistencyCount} inconsistencies in server state! Race conditions detected.`, 'error');
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('testLog').innerHTML = 'Logs cleared...';
+            document.getElementById('serverStatus').innerHTML = 'Click "Check Server Status" to view current state...';
+            testStats = { totalRequests: 0, successful: 0, failed: 0, inconsistencies: 0 };
+            serverSnapshots = [];
+            updateStats();
+            logMessage('Test environment reset', 'info');
+        }
+
+        // Initialize
+        updateStats();
+        logMessage('Stress test tool initialized', 'info');
+    </script>
+</body>
+</html>

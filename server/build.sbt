@@ -6,6 +6,8 @@
      name := "Server",
      version := "0.0.1-SNAPSHOT",
      fork := true,
+     run / connectInput := true,
+     run / fork := true,
      scalaVersion := "2.12.18",
      // scalaVersion := "3.6.3",
      libraryDependencies ++= Seq(
@@ -17,5 +19,6 @@
        "org.slf4j" % "slf4j-api" % "2.0.7",
        "org.http4s" %% "http4s-dsl" % "0.23.16",
        "org.http4s" %% "http4s-ember-server" % "0.23.16",
+       "ch.qos.logback" % "logback-classic" % "1.4.14"
      )
    )

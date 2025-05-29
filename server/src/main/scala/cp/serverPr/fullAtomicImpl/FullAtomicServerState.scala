@@ -21,6 +21,7 @@ case class ServerStats(total: Int,
 class FullAtomicServerState {
 
   private val MAX_CONCURRENT_PROCESSES: Long = 3
+  // unsafeSync to already generate semaphore instead of only structions to create lazy
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
   private val currentStats = new AtomicReference(ServerStats(0, 0, 0, 0))
 

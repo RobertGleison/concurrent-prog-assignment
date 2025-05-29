@@ -1,12 +1,12 @@
-package cp.serverPr.synchronizedImpl
+package cp.serverPr.manualLockFreeImpl
 
 import org.http4s.dsl.io._
 import cats.effect.IO
 import org.http4s._
 
 
-object SynchronizedRoutes {
-  private val sharedState: SynchronizedServerState = new SynchronizedServerState()
+object ManualLockFreeRoutes {
+  private val sharedState: ManualLockFreeServerState = new ManualLockFreeServerState()
 
   val routes: IO[HttpRoutes[IO]] = IO.pure {
     HttpRoutes.of[IO] {

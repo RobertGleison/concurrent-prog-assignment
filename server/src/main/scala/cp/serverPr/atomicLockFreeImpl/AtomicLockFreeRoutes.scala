@@ -1,12 +1,12 @@
-package cp.serverPr.synchronizedImpl
+package cp.serverPr.atomicLockFreeImpl
 
 import org.http4s.dsl.io._
 import cats.effect.IO
 import org.http4s._
 
 
-object SynchronizedRoutes {
-  private val sharedState: SynchronizedServerState = new SynchronizedServerState()
+object FullAtomicRoutes {
+  private val sharedState: AtomicLockFreeServerState = new AtomicLockFreeServerState()
 
   val routes: IO[HttpRoutes[IO]] = IO.pure {
     HttpRoutes.of[IO] {
@@ -29,6 +29,7 @@ object SynchronizedRoutes {
               result <- sharedState.executeCommand(cmd, userIp.toString)
               response <- Ok(result).map(addCORSHeaders)
             } yield response
+
           case None =>
             BadRequest("Command not provided. Use /run-process?cmd=<your_command>").map(addCORSHeaders)
         }}}

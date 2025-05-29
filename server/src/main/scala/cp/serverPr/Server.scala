@@ -9,8 +9,9 @@ import scala.io.StdIn
 
 import cp.serverPr.synchronizedImpl.SynchronizedRoutes
 import cp.serverPr.lockFreeImpl.LockFreeRoutes
-import cp.serverPr.volatileImpl.VolatileRoutes
+import cp.serverPr.fullAtomicImpl.FullAtomicServerState
 import cp.serverPr.raceConditionImpl.RaceConditionRoutes
+import cp.serverPr.fullAtomicImpl.FullAtomicRoutes
 
 
 object Server {
@@ -47,8 +48,8 @@ object Server {
           logger.info(s"Starting server with implementation: Lock-Free Programming")
           LockFreeRoutes.routes
         case "3" =>
-          logger.info(s"Starting server with implementation: Volatile Variables")
-          VolatileRoutes.routes
+          logger.info(s"Starting server with implementation: Full Atomic Variables")
+          FullAtomicRoutes.routes
         case "4" =>
           logger.info(s"Starting server with implementation: Race Condition Demo")
           logger.info(s"This implementation shows race condidions")

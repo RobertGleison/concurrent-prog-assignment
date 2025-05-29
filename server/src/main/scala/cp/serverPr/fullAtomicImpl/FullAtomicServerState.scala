@@ -1,4 +1,4 @@
-package cp.serverPr.volatileImpl
+package cp.serverPr.fullAtomicImpl
 
 import java.util.concurrent.atomic.AtomicReference
 import cats.effect.unsafe.implicits.global
@@ -18,7 +18,7 @@ case class ServerStats(total: Int,
 }
 
 
-class VolatileServerState {
+class FullAtomicServerState {
 
   private val MAX_CONCURRENT_PROCESSES: Long = 3
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()

@@ -1,16 +1,16 @@
-package cp.serverPr.volatileImpl
+package cp.serverPr.fullAtomicImpl
 
 import org.http4s.dsl.io._
 import cats.effect.IO
 import org.http4s._
 
 
-object VolatileRoutes {
-  private val sharedState: VolatileServerState = new VolatileServerState()
+object FullAtomicRoutes {
+  private val sharedState: FullAtomicServerState = new FullAtomicServerState()
 
   val routes: IO[HttpRoutes[IO]] = IO.pure {
     HttpRoutes.of[IO] {
-      
+
       case GET -> Root / "status" =>
         for {
           html <- sharedState.getStatusHtml

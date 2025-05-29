@@ -1,78 +1,146 @@
 package cp.serverPr.lockFreeImpl
 
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.{ConcurrentLinkedQueue, ConcurrentHashMap}
+import cats.effect.IO
+import org.slf4j.LoggerFactory
+import scala.sys.process._
+import java.util.concurrent.atomic.AtomicReference
+import scala.annotation.tailrec
 
-case class QueuedRequest(requestId: Int, cmd: String, userIp: String)
+// Immutable state for the entire server
+case class LockFreeServerStats(
+  total: Int,
+  running: Int,
+  completed: Int,
+  maxConcurrent: Int,
+  availableSlots: Int // Track available execution slots
+) {
+  def queued: Int = total - running - completed
+  def canExecute: Boolean = availableSlots > 0
+}
 
-class LockFreeServerState {
-  private val MAX_CONCURRENT = 3
-  private val _counter = new AtomicInteger(0)
-  private val _currentlyExecuting = new AtomicInteger(0)
-  private val _executingRequests = ConcurrentHashMap.newKeySet[Int]()
-  private val _requestQueue = new ConcurrentLinkedQueue[QueuedRequest]()
+class LockFreeServerState private (
+  private val maxConcurrent: Int
+) {
+  private val logger = LoggerFactory.getLogger(getClass)
 
-  def counter: Int = _counter.get()
+  // Single atomic reference for all state - this is the key to lock-free
+  private val state = new AtomicReference(
+    LockFreeServerStats(
+      total = 0,
+      running = 0,
+      completed = 0,
+      maxConcurrent = 0,
+      availableSlots = maxConcurrent
+    )
+  )
 
-  def incrementCounter(): Int = _counter.incrementAndGet()
-
-  /**
-   * Try to start execution using Compare-And-Swap
-   * Returns true if execution can start immediately
-   */
-  def tryStartExecution(requestId: Int): Boolean = {
-    var currentCount = _currentlyExecuting.get()
-    while (currentCount < MAX_CONCURRENT) {
-      if (_currentlyExecuting.compareAndSet(currentCount, currentCount + 1)) {
-        val _ = _executingRequests.add(requestId)  // Explicitly discard boolean return
-        return true
+  def executeCommand(cmd: String, userIp: String): IO[String] = {
+    for {
+      processId <- reserveSlot() // Lock-free slot reservation
+      result <- processId match {
+        case Some(id) =>
+          runCommandWithCleanup(id, cmd, userIp)
+        case None =>
+          // No slots available - reject immediately (lock-free backpressure)
+          IO.pure(s"❌ Server busy - max concurrent processes ($maxConcurrent) reached. Try again later.")
       }
-      // Retry if CAS failed due to concurrent modification
-      currentCount = _currentlyExecuting.get()
+    } yield result
+  }
+
+  // Lock-free slot reservation using compare-and-swap
+  private def reserveSlot(): IO[Option[Int]] = IO {
+    @tailrec
+    def attemptReservation(): Option[Int] = {
+      val currentState = state.get()
+
+      if (!currentState.canExecute) {
+        None // No slots available
+      } else {
+        val processId = currentState.total + 1
+        val newRunning = currentState.running + 1
+        val newState = currentState.copy(
+          total = processId,
+          running = newRunning,
+          availableSlots = currentState.availableSlots - 1,
+          maxConcurrent = math.max(currentState.maxConcurrent, newRunning)
+        )
+
+        if (state.compareAndSet(currentState, newState)) {
+          Some(processId) // Successfully reserved slot
+        } else {
+          attemptReservation() // Retry - another thread modified state
+        }
+      }
     }
-    false
+
+    attemptReservation()
   }
 
-  def completeExecution(requestId: Int): Unit = {
-    _currentlyExecuting.decrementAndGet()  // Explicitly discard int return
-    val _ = _executingRequests.remove(requestId)   // Explicitly discard boolean return
+  // Release slot using compare-and-swap
+  private def releaseSlot(): IO[Unit] = IO {
+    @tailrec
+    def attemptRelease(): Unit = {
+      val currentState = state.get()
+      val newState = currentState.copy(
+        running = currentState.running - 1,
+        completed = currentState.completed + 1,
+        availableSlots = currentState.availableSlots + 1
+      )
+
+      if (!state.compareAndSet(currentState, newState)) {
+        attemptRelease() // Retry if another thread modified state
+      }
+    }
+
+    attemptRelease()
   }
 
-  def queueRequest(requestId: Int, cmd: String, userIp: String): Unit = {
-    val _ = _requestQueue.offer(QueuedRequest(requestId, cmd, userIp))  // Explicitly discard boolean return
+  private def runCommandWithCleanup(id: Int, cmd: String, userIp: String): IO[String] = {
+    val execution = for {
+      _ <- IO(logger.info(s"🔹 Starting process $id: $cmd"))
+      result <- runCommand(id, cmd, userIp)
+      _ <- IO(logger.info(s"🔸 Completed process $id"))
+    } yield result
+
+    // Ensure slot is always released, even on failure
+    execution.guarantee(releaseSlot())
   }
+
+  private def runCommand(id: Int, cmd: String, userIp: String): IO[String] = {
+    IO.blocking {
+      try {
+        val output = Process(Seq("bash", "-c", cmd)).!!
+        s"[$id] Result from running $cmd user $userIp\n$output"
+      } catch {
+        case e: Exception =>
+          val errorMsg = s"[$id] Error running $cmd: ${e.getMessage}"
+          logger.error(errorMsg)
+          errorMsg
+      }
+    }
+  }
+
+  // Lock-free status reading
+  def getStatusHtml: IO[String] = IO {
+    val currentState = state.get() // Single atomic read
+    s"""
+       |<p><strong>counter:</strong> ${currentState.total} (Total commands received since server start)</p>
+       |<p><strong>queued:</strong> ${currentState.queued} (Commands waiting for execution)</p>
+       |<p><strong>running:</strong> ${currentState.running} (Commands currently executing)</p>
+       |<p><strong>completed:</strong> ${currentState.completed} (Commands that finished)</p>
+       |<p><strong>max concurrent:</strong> ${currentState.maxConcurrent} (Peak number of commands running simultaneously)</p>
+       |<p><strong>available slots:</strong> ${currentState.availableSlots} (Execution slots available right now)</p>
+       """.stripMargin
+  }
+}
+
+object LockFreeServerState {
+  private val MAX_CONCURRENT_PROCESSES: Int = 3
 
   /**
-   * Get next queued request using lock-free approach
+   * Create lock-free server state
    */
-  def getNextQueuedRequest(): Option[(Int, String, String)] = {
-    val request = _requestQueue.poll()
-    if (request != null && tryStartExecution(request.requestId)) {
-      Some((request.requestId, request.cmd, request.userIp))
-    } else if (request != null) {
-      // Put it back if we couldn't start execution
-      val _ = _requestQueue.offer(request)  // Explicitly discard boolean return
-      None
-    } else {
-      None
-    }
-  }
-
-  def getQueueSize(): Int = _requestQueue.size()
-
-  def toHtml: String = {
-    val currentExec = _currentlyExecuting.get()
-    val queueSize = _requestQueue.size()
-    val executingList = _executingRequests.toArray().mkString(", ")
-
-    s"""
-      |<div>
-      |  <p><strong>Counter:</strong> ${counter}</p>
-      |  <p><strong>Currently Executing:</strong> $currentExec / $MAX_CONCURRENT</p>
-      |  <p><strong>Queue Size:</strong> $queueSize</p>
-      |  <p><strong>Executing Requests:</strong> $executingList</p>
-      |  <p style="color: green;"><strong>✅ Lock-free implementation</strong></p>
-      |</div>
-    """.stripMargin
+  def create(): IO[LockFreeServerState] = {
+    IO.pure(new LockFreeServerState(MAX_CONCURRENT_PROCESSES))
   }
 }

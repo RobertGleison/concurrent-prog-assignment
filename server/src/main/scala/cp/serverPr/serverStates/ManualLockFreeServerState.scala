@@ -1,14 +1,15 @@
-package cp.serverPr.manualLockFreeImpl
+package cp.serverPr.serverStates
 
+import java.util.concurrent.atomic.AtomicInteger
 import cats.effect.unsafe.implicits.global
+import cp.serverPr.ServerStateInterface
 import cats.effect.std.Semaphore
 import scala.sys.process._
 import cats.effect.IO
-import java.util.concurrent.atomic.AtomicInteger
 
 
-class ManualLockFreeServerState {
-  private val MAX_CONCURRENT_PROCESSES: Long = 3
+class ManualLockFreeServerState extends ServerStateInterface{
+  private val MAX_CONCURRENT_PROCESSES: Long = 7
   // Lock-free semaphore creation
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
 
@@ -83,6 +84,7 @@ class ManualLockFreeServerState {
        |<p><strong>running:</strong> $currentRunning (Commands currently executing)</p>
        |<p><strong>completed:</strong> $currentCompleted (Commands that finished successfully)</p>
        |<p><strong>max concurrent:</strong> $currentMaxConcurrent (Peak number of commands running simultaneously)</p>
+       |<p><strong>Implementation:</strong> Lock Free</p>
     """.stripMargin
   }
 }

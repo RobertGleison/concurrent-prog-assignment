@@ -1,13 +1,14 @@
-package cp.serverPr.synchronizedImpl
+package cp.serverPr.serverStates
 
 import cats.effect.unsafe.implicits.global
+import cp.serverPr.ServerStateInterface
 import cats.effect.std.Semaphore
 import scala.sys.process._
 import cats.effect.IO
 
 
-class SynchronizedServerState {
-  private val MAX_CONCURRENT_PROCESSES: Long = 3
+class SynchronizedServerState  extends  ServerStateInterface{
+  private val MAX_CONCURRENT_PROCESSES: Long = 7
   // unsafeSync to already generate semaphore instead of only structions to create lazy
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
 
@@ -82,6 +83,7 @@ class SynchronizedServerState {
        |<p><strong>running:</strong> $currentRunning (Commands currently executing)</p>
        |<p><strong>completed:</strong> $currentCompleted (Commands that finished successfully)</p>
        |<p><strong>max concurrent:</strong> $currentMaxConcurrent (Peak number of commands running simultaneously)</p>
+       |<p><strong>Implementation:</strong> Syncronized Blocks</p>
     """.stripMargin
   }
 }

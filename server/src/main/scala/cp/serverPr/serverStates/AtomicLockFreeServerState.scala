@@ -1,7 +1,8 @@
-package cp.serverPr.atomicLockFreeImpl
+package cp.serverPr.serverStates
 
 import java.util.concurrent.atomic.AtomicReference
 import cats.effect.unsafe.implicits.global
+import cp.serverPr.ServerStateInterface
 import cats.effect.std.Semaphore
 import scala.sys.process._
 import cats.effect.IO
@@ -18,9 +19,9 @@ case class ServerStats(total: Int,
 }
 
 
-class AtomicLockFreeServerState {
+class AtomicLockFreeServerState extends ServerStateInterface {
 
-  private val MAX_CONCURRENT_PROCESSES: Long = 3
+  private val MAX_CONCURRENT_PROCESSES: Long = 7
   // unsafeSync to already generate semaphore instead of only structions to create lazy
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
   private val currentStats = new AtomicReference(ServerStats(0, 0, 0, 0))
@@ -76,5 +77,6 @@ class AtomicLockFreeServerState {
      |<p><strong>running:</strong> ${stats.running} (Commands currently executing)</p>
      |<p><strong>completed:</strong> ${stats.completed} (Commands that finished successfully)</p>
      |<p><strong>max concurrent:</strong> ${stats.maxConcurrent} (Peak number of commands running simultaneously)</p>
+     |<p><strong>Implementation:</strong> Lock Free</p>
     """.stripMargin
   }}

@@ -6,9 +6,9 @@ import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.Logger
 import org.slf4j.LoggerFactory
 import scala.io.StdIn
-
-import cp.serverPr.synchronizedImpl.SynchronizedRoutes
-
+import cp.serverPr.serverStates.AtomicLockFreeServerState
+import cp.serverPr.serverStates.NonThreadSafeServerState
+import cp.serverPr.serverStates.SynchronizedServerState
 
 object Server {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -24,36 +24,35 @@ object Server {
       println("="*60)
       println("Choose a concurrency implementation:\n")
       println("1. Synchronized Blocks")
-      println("2. Lock-Free")
-      println("4. Race Condition Demo")
+      println("2. Lock-Free Programming")
+      println("3. Race Condition Demo")
       println("="*60)
       println("Enter your choice (1-3): ")
       System.out.flush()
-
       val input = StdIn.readLine()
       input.trim
     }
 
     choice.flatMap { selection =>
-      val routesIO = selection match {
+      val (serverState, implementationName) = selection match {
         case "1" =>
-          logger.info(s"Starting server with implementation: Synchronized Blocks")
-          SynchronizedRoutes.routes
+          (new SynchronizedServerState(), "Synchronized Blocks")
         case "2" =>
-          logger.info(s"Starting server with implementation: Lock-Free Programming")
-          LockFreeRoutes.routes
+          (new AtomicLockFreeServerState(), "Lock-Free Programming")
         case "3" =>
-          logger.info(s"Starting server with implementation: Full Atomic Variables")
-          FullAtomicRoutes.routes
-        case "4" =>
-          logger.info(s"Starting server with implementation: Race Condition Demo")
-          logger.info(s"This implementation shows race condidions")
-          RaceConditionRoutes.routes
+          (new NonThreadSafeServerState(), "Race Condition Demo")
         case _ =>
           logger.warn(s"Invalid choice: $selection, defaulting to Synchronized")
           println(s"Invalid choice '$selection', using Synchronized implementation")
-          SynchronizedRoutes.routes
+          (new SynchronizedServerState(), "Synchronized Blocks (Default)")
       }
+
+      logger.info(s"Starting server with implementation: $implementationName")
+      if (selection == "3") {
+        logger.info("This implementation shows race conditions")
+      }
+
+      val routesIO = Routes.createRoutes(serverState)
 
       routesIO.flatMap { httpRoutes =>
         val httpApp = Logger.httpApp(logHeaders = true, logBody = false)(httpRoutes.orNotFound)
@@ -66,8 +65,4 @@ object Server {
           .useForever
           .onError { e =>
             IO(logger.error("Error: server couldn't start.", e))
-          }
-      }
-    }
-  }
-}
+          }}}}}

@@ -1,9 +1,10 @@
 package cp.serverPr.volatileImpl
-import cats.effect.IO
-import cats.effect.std.Semaphore
-import scala.sys.process._
+
 import java.util.concurrent.atomic.AtomicReference
 import cats.effect.unsafe.implicits.global
+import cats.effect.std.Semaphore
+import scala.sys.process._
+import cats.effect.IO
 
 
 // Immutable snapshot of my server state.

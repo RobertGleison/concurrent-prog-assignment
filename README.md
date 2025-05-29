@@ -4,6 +4,52 @@
 ## Overview
 This project demonstrates different approaches to handle concurrent requests in Scala. It implements three different server state management strategies, each showcasing different concurrency control mechanisms and thread safety approaches. After that, a stress test was applied to test the non thread safety implementations x thread safety implementations. Concepts used: semaphores, lock-free, syncronized blocks, volatile variables, atomic variables.
 
+
+
+## How to Run It
+
+### Prerequisites
+- **Java Development Kit (JDK)** 8 or higher
+- **Scala SBT** (Simple Build Tool)
+
+### Running the Server
+1. Navigate to the server folder:
+   ```bash
+   cd server
+   ```
+
+2. Start the application:
+   ```bash
+   sbt run
+   ```
+
+3. **Choose your implementation** from the menu
+
+### Accessing the UI
+- Open `client/index.html` in your browser to access the user interface
+- The UI allows you to:
+  - Submit commands to execute
+  - Monitor real-time server status
+  - View process statistics
+
+### Running Stress Tests
+- Open `stressTest.html` in your browser to run performance tests
+- Compare different implementations under load
+- Monitor concurrency behavior and queue management
+
+### Example Workflow
+```bash
+# 1. Start the server
+cd server && sbt run
+
+# 2. Select implementation (e.g., AtomicLockFreeServerState)
+
+# 3. Open browser tabs:
+# - client/index.html (for manual testing)
+# - stressTest.html (for load testing)
+```
+
+
 ## Project Structure
 
 ![alt text](image-1.png)
@@ -103,3 +149,5 @@ OBS: this code runs in test environments. I am not treating possible malicious l
 
 ## Stress Test
 ![alt text](<Screenshot from 2025-05-29 22-05-54.png>)![alt text](<Screenshot from 2025-05-29 22-07-23.png>) ![alt text](<Screenshot from 2025-05-29 22-07-36.png>) ![alt text](<Screenshot from 2025-05-29 22-07-41.png>) ![alt text](<Screenshot from 2025-05-29 22-10-00.png>) ![alt text](<Screenshot from 2025-05-29 22-10-40.png>) ![alt text](<Screenshot from 2025-05-29 22-10-48.png>) ![alt text](<Screenshot from 2025-05-29 22-11-47.png>) ![alt text](<Screenshot from 2025-05-29 22-12-01.png>) ![alt text](<Screenshot from 2025-05-29 22-12-07.png>) ![alt text](<Screenshot from 2025-05-29 22-12-17.png>)
+
+

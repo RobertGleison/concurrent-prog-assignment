@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory
 object VolatileRoutes {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  // Create single shared instance
   private val sharedState: IO[VolatileServerState] = VolatileServerState.create()
 
   val routes: IO[HttpRoutes[IO]] =

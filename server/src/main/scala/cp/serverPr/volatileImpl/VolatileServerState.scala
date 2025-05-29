@@ -6,25 +6,17 @@ import org.slf4j.LoggerFactory
 import scala.sys.process._
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Simplified server state - just execute commands with concurrency control
- */
 class VolatileServerState private (
   private val semaphore: Semaphore[IO]
 ) {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  // Simple atomic counters for stats
   private val totalProcesses = new AtomicInteger(0)
   private val runningProcesses = new AtomicInteger(0)
   private val completedProcesses = new AtomicInteger(0)
 
-  // Track peak concurrent processes
   @volatile private var maxConcurrent: Int = 0
 
-  /**
-   * Execute command and return result when ready
-   */
   def executeCommand(cmd: String, userIp: String): IO[String] = {
     val processId = totalProcesses.incrementAndGet()
 
@@ -45,9 +37,6 @@ class VolatileServerState private (
     }
   }
 
-  /**
-   * Execute the actual command
-   */
   private def runCommand(id: Int, cmd: String, userIp: String): IO[String] = {
     IO.blocking {
       try {
@@ -62,9 +51,6 @@ class VolatileServerState private (
     }
   }
 
-  /**
-   * Get server status as HTML
-   */
   def getStatusHtml: IO[String] = IO {
     val total = totalProcesses.get()
     val running = runningProcesses.get()
@@ -72,11 +58,11 @@ class VolatileServerState private (
     val queued = total - running - completed // Simple queue calculation
 
     s"""
-      |<p><strong>counter:</strong> $total</p>
-      |<p><strong>queued:</strong> $queued</p>
-      |<p><strong>running:</strong> $running</p>
-      |<p><strong>completed:</strong> $completed</p>
-      |<p><strong>max concurrent:</strong> $maxConcurrent</p>
+      |<p><strong>counter:</strong> $total (Total commands received since server start)</p>
+      |<p><strong>queued:</strong> $queued (Commands waiting for a semaphore permit / in queue)</p>
+      |<p><strong>running:</strong> $running (Commands currently executing)</p>
+      |<p><strong>completed:</strong> $completed (Commands that finished successfully)</p>
+      |<p><strong>max concurrent:</strong> $maxConcurrent (Peak number of commands running simultaneously)</p>
     """.stripMargin
   }
 }

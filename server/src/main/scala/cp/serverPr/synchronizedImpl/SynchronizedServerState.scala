@@ -3,6 +3,7 @@ package cp.serverPr.synchronizedImpl
 import cats.effect.IO
 import org.slf4j.LoggerFactory
 import scala.sys.process._
+import cats.effect.unsafe.implicits.global
 import scala.collection.mutable
 
 // Mutable case class for server stats - protected by synchronization
@@ -124,6 +125,7 @@ class SynchronizedServerState private () {
 
       // If queued, the callback will be invoked when slot becomes available
       None // No cleanup needed
+      ()
     }
   }
 

@@ -1,64 +1,58 @@
 package cp.serverPr.volatileImpl
 import cats.effect.{IO}
 import cats.effect.std.Semaphore
-import org.slf4j.LoggerFactory
 import scala.sys.process._
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import cats.effect.unsafe.implicits.global
 
-// Immutable case class for consistent status snapshots
-case class ServerStats(
-  total: Int,
-  running: Int,
-  completed: Int,
-  maxConcurrent: Int
-) {
+
+// Immutable Snashot of my server state.
+// This solve consistency problems of updating different variables at different times
+// Just one snapshot is created when GET status is called
+case class ServerStats(total: Int,
+                       running: Int,
+                       completed: Int,
+                       maxConcurrent: Int) {
   def queued: Int = total - running - completed
 }
 
-class VolatileServerState private (
-  private val semaphore: Semaphore[IO]
-) {
-  private val logger = LoggerFactory.getLogger(getClass)
-  
+class VolatileServerState {
+  private val MAX_CONCURRENT_PROCESSES: Long = 3
+  private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
+  private val currentStats = new AtomicReference(ServerStats(0, 0, 0, 0))
+
   private val totalProcesses = new AtomicInteger(0)
   private val runningProcesses = new AtomicInteger(0)
   private val completedProcesses = new AtomicInteger(0)
   private val maxConcurrent = new AtomicInteger(0)
 
-
-  // Fix 2: Atomic reference for consistent status snapshots
-  private val currentStats = new AtomicReference(ServerStats(0, 0, 0, 0))
-
   def executeCommand(cmd: String, userIp: String): IO[String] = {
-    // Basic command validation for security
+    val processId = totalProcesses.incrementAndGet() // Atomically increments and get the value as id of the process
 
-    val processId = totalProcesses.incrementAndGet()
+    // semaphore permits only MAX_CONCURRENT_PROCESSES running at the same time
     semaphore.permit.use { _ =>
       for {
         _ <- IO {
           val current = runningProcesses.incrementAndGet()
-          updateMaxConcurrent(current)
-          updateStats()
-          logger.info(s"🔹 Starting process $processId: $cmd")
+          updateMaxConcurrent(current)          // update max concurrent commands with thread-safety
+          updateStats()                         // update stats with thread-safety
         }
         result <- runCommand(processId, cmd, userIp)
         _ <- IO {
-          runningProcesses.decrementAndGet()
-          completedProcesses.incrementAndGet()
-          updateStats()
-          logger.info(s"🔸 Completed process $processId")
+          runningProcesses.decrementAndGet()    // decrement the number of commands running because its completed with thread-safety
+          completedProcesses.incrementAndGet()  // increment the number of completed commands with thread-safety
+          updateStats()                         // update stats with thread-safety
         }
       } yield result
       }
   }
 
-  // Fix 1: Thread-safe update of maxConcurrent using compareAndSet
   private def updateMaxConcurrent(newValue: Int): Unit = {
     maxConcurrent.getAndUpdate(current => math.max(current, newValue))
     ()
   }
 
-  // Fix 2: Update stats atomically for consistent snapshots
+  // single atomic container
   private def updateStats(): Unit = {
     val newStats = ServerStats(
       total = totalProcesses.get(),
@@ -69,6 +63,7 @@ class VolatileServerState private (
     currentStats.set(newStats)
   }
 
+  // run the command on a dedicated blocking thread pool
   private def runCommand(id: Int, cmd: String, userIp: String): IO[String] = {
     IO.blocking {
       try {
@@ -77,7 +72,6 @@ class VolatileServerState private (
       } catch {
         case e: Exception =>
           val errorMsg = s"[$id] Error running $cmd: ${e.getMessage}"
-          logger.error(errorMsg)
           errorMsg
       }
     }
@@ -93,16 +87,5 @@ class VolatileServerState private (
      |<p><strong>completed:</strong> ${stats.completed} (Commands that finished successfully)</p>
      |<p><strong>max concurrent:</strong> ${stats.maxConcurrent} (Peak number of commands running simultaneously)</p>
     """.stripMargin
-  }
-}
-
-object VolatileServerState {
-  private val MAX_CONCURRENT_PROCESSES: Long = 3
-
-  /**
-   * Create server state with semaphore for concurrency control
-   */
-  def create(): IO[VolatileServerState] = {
-    Semaphore[IO](MAX_CONCURRENT_PROCESSES).map(new VolatileServerState(_))
   }
 }

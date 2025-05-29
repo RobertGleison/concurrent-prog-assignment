@@ -9,7 +9,7 @@ import cats.effect.IO
 
 
 class ManualLockFreeServerState extends ServerStateInterface{
-  private val MAX_CONCURRENT_PROCESSES: Long = 3
+  private val MAX_CONCURRENT_PROCESSES: Long = 7
   // Lock-free semaphore creation
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
 

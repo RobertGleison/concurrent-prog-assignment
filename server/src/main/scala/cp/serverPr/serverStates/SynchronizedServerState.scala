@@ -8,7 +8,7 @@ import cats.effect.IO
 
 
 class SynchronizedServerState  extends  ServerStateInterface{
-  private val MAX_CONCURRENT_PROCESSES: Long = 3
+  private val MAX_CONCURRENT_PROCESSES: Long = 7
   // unsafeSync to already generate semaphore instead of only structions to create lazy
   private val semaphore: Semaphore[IO] = Semaphore[IO](MAX_CONCURRENT_PROCESSES).unsafeRunSync()
 

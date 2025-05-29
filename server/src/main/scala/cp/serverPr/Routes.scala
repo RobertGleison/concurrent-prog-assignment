@@ -1,17 +1,21 @@
-package cp.serverPr.nonThreadSafeImpl
+package cp.serverPr
 
 import org.http4s.dsl.io._
 import cats.effect.IO
 import org.http4s._
 
-object NonThreadSafeRoutes {
-  private val sharedState: NonThreadSafeServerState = new NonThreadSafeServerState()
+trait ServerStateInterface {
+  def executeCommand(cmd: String, userIp: String): IO[String]
+  def getStatusHtml: IO[String]
+}
 
-  val routes: IO[HttpRoutes[IO]] = IO.pure {
+
+object Routes {
+  def createRoutes(serverState: ServerStateInterface): IO[HttpRoutes[IO]] = IO.pure {
     HttpRoutes.of[IO] {
       case GET -> Root / "status" =>
         for {
-          html <- sharedState.getStatusHtml
+          html <- serverState.getStatusHtml
           response <- Ok(html)
             .map(addCORSHeaders)
             .map(_.withContentType(org.http4s.headers.`Content-Type`(MediaType.text.html)))
@@ -23,7 +27,7 @@ object NonThreadSafeRoutes {
         cmdOpt match {
           case Some(cmd) =>
             for {
-              result <- sharedState.executeCommand(cmd, userIp.toString)
+              result <- serverState.executeCommand(cmd, userIp.toString)
               response <- Ok(result).map(addCORSHeaders)
             } yield response
           case None =>
@@ -32,7 +36,7 @@ object NonThreadSafeRoutes {
     }
   }
 
-  def addCORSHeaders(response: Response[IO]): Response[IO] = {
+  private def addCORSHeaders(response: Response[IO]): Response[IO] = {
     response.putHeaders(
       "Access-Control-Allow-Origin" -> "*",
       "Access-Control-Allow-Methods" -> "GET, POST, PUT, DELETE, OPTIONS",

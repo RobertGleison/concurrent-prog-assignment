@@ -1,9 +1,10 @@
-package cp.serverPr.nonThreadSafeImpl
+package cp.serverPr.serverStates
 
+import cp.serverPr.ServerStateInterface
 import scala.sys.process._
 import cats.effect.IO
 
-class NonThreadSafeServerState {
+class NonThreadSafeServerState extends  ServerStateInterface{
   // simple mutable variables,  no atomic operations or snapshots
   private var total: Int = 0
   private var running: Int = 0

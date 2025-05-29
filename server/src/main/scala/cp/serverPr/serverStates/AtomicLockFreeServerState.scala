@@ -1,7 +1,8 @@
-package cp.serverPr.atomicLockFreeImpl
+package cp.serverPr.serverStates
 
 import java.util.concurrent.atomic.AtomicReference
 import cats.effect.unsafe.implicits.global
+import cp.serverPr.ServerStateInterface
 import cats.effect.std.Semaphore
 import scala.sys.process._
 import cats.effect.IO
@@ -18,7 +19,7 @@ case class ServerStats(total: Int,
 }
 
 
-class AtomicLockFreeServerState {
+class AtomicLockFreeServerState extends ServerStateInterface {
 
   private val MAX_CONCURRENT_PROCESSES: Long = 3
   // unsafeSync to already generate semaphore instead of only structions to create lazy

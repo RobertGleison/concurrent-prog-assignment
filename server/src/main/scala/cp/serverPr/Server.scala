@@ -8,9 +8,6 @@ import org.slf4j.LoggerFactory
 import scala.io.StdIn
 
 import cp.serverPr.synchronizedImpl.SynchronizedRoutes
-import cp.serverPr.lockFreeImpl.LockFreeRoutes
-import cp.serverPr.volatileImpl.VolatileRoutes
-import cp.serverPr.raceConditionImpl.RaceConditionRoutes
 
 
 object Server {
@@ -27,11 +24,10 @@ object Server {
       println("="*60)
       println("Choose a concurrency implementation:\n")
       println("1. Synchronized Blocks")
-      println("2. Lock-Free Programming")
-      println("3. Volatile Variables")
+      println("2. Lock-Free")
       println("4. Race Condition Demo")
       println("="*60)
-      println("Enter your choice (1-4): ")
+      println("Enter your choice (1-3): ")
       System.out.flush()
 
       val input = StdIn.readLine()
@@ -47,8 +43,8 @@ object Server {
           logger.info(s"Starting server with implementation: Lock-Free Programming")
           LockFreeRoutes.routes
         case "3" =>
-          logger.info(s"Starting server with implementation: Volatile Variables")
-          VolatileRoutes.routes
+          logger.info(s"Starting server with implementation: Full Atomic Variables")
+          FullAtomicRoutes.routes
         case "4" =>
           logger.info(s"Starting server with implementation: Race Condition Demo")
           logger.info(s"This implementation shows race condidions")

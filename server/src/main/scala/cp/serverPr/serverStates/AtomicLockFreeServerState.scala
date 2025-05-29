@@ -77,5 +77,6 @@ class AtomicLockFreeServerState extends ServerStateInterface {
      |<p><strong>running:</strong> ${stats.running} (Commands currently executing)</p>
      |<p><strong>completed:</strong> ${stats.completed} (Commands that finished successfully)</p>
      |<p><strong>max concurrent:</strong> ${stats.maxConcurrent} (Peak number of commands running simultaneously)</p>
+     |<p><strong>Implementation:</strong> Lock Free</p>
     """.stripMargin
   }}

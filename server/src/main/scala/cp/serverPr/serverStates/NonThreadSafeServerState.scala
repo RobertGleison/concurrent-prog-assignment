@@ -57,5 +57,6 @@ class NonThreadSafeServerState extends  ServerStateInterface{
        |<p><strong>running:</strong> $running (Commands currently executing)</p>
        |<p><strong>completed:</strong> $completed (Commands that finished successfully)</p>
        |<p><strong>max concurrent:</strong> $maxConcurrent (Peak number of commands running simultaneously)</p>
+       |<p><strong>Implementation:</strong> Non Thread Safe</p>
     """.stripMargin
   }}

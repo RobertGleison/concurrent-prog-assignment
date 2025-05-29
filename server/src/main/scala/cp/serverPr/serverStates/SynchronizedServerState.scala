@@ -83,6 +83,7 @@ class SynchronizedServerState  extends  ServerStateInterface{
        |<p><strong>running:</strong> $currentRunning (Commands currently executing)</p>
        |<p><strong>completed:</strong> $currentCompleted (Commands that finished successfully)</p>
        |<p><strong>max concurrent:</strong> $currentMaxConcurrent (Peak number of commands running simultaneously)</p>
+       |<p><strong>Implementation:</strong> Syncronized Blocks</p>
     """.stripMargin
   }
 }

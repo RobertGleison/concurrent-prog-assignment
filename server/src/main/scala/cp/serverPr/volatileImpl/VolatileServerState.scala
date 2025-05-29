@@ -1,70 +1,196 @@
 package cp.serverPr.volatileImpl
 
-import scala.collection.mutable
+import cats.effect.{IO, Ref}
+import cats.effect.std.{Queue, Semaphore}
+import org.slf4j.LoggerFactory
+import scala.sys.process._
+import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.duration._
 
-class VolatileServerState {
-  private val MAX_CONCURRENT = 3
+case class ProcessRequest(id: Int, cmd: String, userIp: String)
 
-  // Using volatile for visibility but note: this doesn't solve all concurrency issues
-  @volatile private var _counter = 0
-  @volatile private var _currentlyExecuting = 0
+/**
+ * Server state containing all business logic for process management
+ * Uses atomic variables for thread-safe operations and volatile for visibility
+ */
+class VolatileServerState private (
+  private val semaphore: Semaphore[IO],
+  private val processQueue: Queue[IO, ProcessRequest],
+  private val resultMap: Ref[IO, Map[Int, String]]
+) {
 
-  // These collections are not thread-safe, which will cause issues
-  private val _executingRequests = mutable.Set[Int]()
-  private val _requestQueue = mutable.Queue[(Int, String, String)]()
+  private val logger = LoggerFactory.getLogger(getClass)
 
-  def counter: Int = _counter
 
-  // This increment is NOT atomic - potential race condition
-  def incrementCounter(): Int = {
-    _counter += 1  // This is actually: read -> increment -> write (not atomic!)
-    _counter
+
+  // ATOMIC VARIABLES: Thread-safe counters
+  private val processCounter = new AtomicInteger(0)     // Total processes created
+  private val queuedProcesses = new AtomicInteger(0)    // Currently queued
+  private val runningProcesses = new AtomicInteger(0)   // Currently running
+  private val completedProcesses = new AtomicInteger(0) // Completed processes
+
+  // VOLATILE VARIABLES: Visibility across threads
+  @volatile private var maxConcurrent: Int = 0          // Peak concurrent processes
+
+  /**
+   * Submit a new process for execution
+   * Returns immediately with a confirmation message
+   */
+  def submitProcess(cmd: String, userIp: String): IO[String] = {
+    for {
+      processId <- IO(incrementCounter())
+      _ <- IO(queueProcess())
+      processReq = ProcessRequest(processId, cmd, userIp)
+      _ <- processQueue.offer(processReq)
+      _ <- IO(logger.info(s"🔶 Queued process ${processId}: $cmd"))
+      result <- waitForProcessCompletion(processId)
+    } yield result
   }
 
-  def canStartExecution(): Boolean = {
-    _currentlyExecuting < MAX_CONCURRENT
+  /**
+   * Get current server status as HTML
+   */
+  def getStatusHtml: IO[String] = IO {
+    toHtml
   }
 
-  // These operations are not atomic despite volatile
-  def startExecution(requestId: Int): Unit = {
-    _currentlyExecuting += 1  // Race condition here!
-    _executingRequests += requestId  // Not thread-safe collection
+  /**
+   * Generate next process ID and update counter
+   */
+  private def incrementCounter(): Int = {
+    processCounter.incrementAndGet()
   }
 
-  def completeExecution(requestId: Int): Unit = {
-    _currentlyExecuting -= 1  // Race condition here!
-    _executingRequests -= requestId  // Not thread-safe collection
+  /**
+   * Increment queued counter
+   */
+  private def queueProcess(): Unit = {
+    queuedProcesses.incrementAndGet()
+    ()
   }
 
-  def queueRequest(requestId: Int, cmd: String, userIp: String): Unit = {
-    _requestQueue.enqueue((requestId, cmd, userIp))  // Not thread-safe!
-  }
+  /**
+   * Move process from queued to running state
+   */
+  private def startProcess(): Unit = {
+    // Move from queued to running
+    queuedProcesses.decrementAndGet()
+    val currentRunning = runningProcesses.incrementAndGet()
 
-  def getNextQueuedRequest(): Option[(Int, String, String)] = {
-    if (_requestQueue.nonEmpty && _currentlyExecuting < MAX_CONCURRENT) {
-      val request = _requestQueue.dequeue()  // Race condition possible!
-      _currentlyExecuting += 1
-      _executingRequests += request._1
-      Some(request)
-    } else {
-      None
+    // Update max concurrent if we hit a new peak (volatile write)
+    if (currentRunning > maxConcurrent) {
+      maxConcurrent = currentRunning
     }
   }
 
-  def getQueueSize(): Int = _requestQueue.size
+  /**
+   * Mark process as completed
+   */
+  private def completeProcess(): Unit = {
+    runningProcesses.decrementAndGet()
+    completedProcesses.incrementAndGet()
+    () // Explicitly return Unit
+  }
 
+  /**
+   * Wait for a process to complete and return its result
+   */
+  private def waitForProcessCompletion(processId: Int): IO[String] = {
+    def checkResult: IO[Option[String]] =
+      resultMap.get.map(_.get(processId))
+
+    def pollForResult: IO[String] =
+      checkResult.flatMap {
+        case Some(result) => IO.pure(result)
+        case None =>
+          IO.sleep(100.millis) >> pollForResult
+      }
+
+    pollForResult
+  }
+
+  /**
+   * Execute a single process request
+   */
+  private def executeProcess(processReq: ProcessRequest): IO[String] = {
+    IO.blocking {
+      try {
+        logger.info(s"🔹 Starting process ${processReq.id}: ${processReq.cmd}")
+        val output = Process(Seq("bash", "-c", processReq.cmd)).!!
+        val result = s"[${processReq.id}] Result from running ${processReq.cmd} user ${processReq.userIp}\n$output"
+        logger.info(s"🔸 Completed process ${processReq.id}")
+        result
+      } catch {
+        case e: Exception =>
+          val errorResult = s"[${processReq.id}] Error running ${processReq.cmd}: ${e.getMessage}"
+          logger.error(s"Process ${processReq.id} failed: ${e.getMessage}")
+          errorResult
+      }
+    }
+  }
+
+  /**
+   * Main process worker - handles queued processes with concurrency control
+   */
+  private def processWorker: IO[Unit] = {
+    processQueue.take.flatMap { processReq =>
+      // Semaphore controls max concurrent processes
+      semaphore.permit.use { _ =>
+        for {
+          _ <- IO(startProcess())
+          result <- executeProcess(processReq)
+          _ <- resultMap.update(_.updated(processReq.id, result))
+          _ <- IO(completeProcess())
+        } yield ()
+      }
+    }.handleErrorWith { error =>
+      IO(logger.error(s"Error in process worker: ${error.getMessage}", error))
+    } >> processWorker // Continue processing
+  }
+
+  /**
+   * Generate HTML status display
+   */
   def toHtml: String = {
-    val currentExec = _currentlyExecuting
-    val queueSize = _requestQueue.size
-    val executingList = _executingRequests.mkString(", ")
+    // Read atomic values (thread-safe)
+    val counter = processCounter.get()
+    val queued = queuedProcesses.get()
+    val running = runningProcesses.get()  // Added running processes count
+    val completed = completedProcesses.get()
+
+    // Read volatile value (guaranteed fresh)
+    val maxConcurrentValue = maxConcurrent
 
     s"""
-      |<div>
-      |  <p><strong>Counter:</strong> ${counter}</p>
-      |  <p><strong>Currently Executing:</strong> $currentExec / $MAX_CONCURRENT</p>
-      |  <p><strong>Queue Size:</strong> $queueSize</p>
-      |  <p><strong>Executing Requests:</strong> $executingList</p>
-      |</div>
+      |<p><strong>counter:</strong> $counter</p>
+      |<p><strong>queued:</strong> $queued</p>
+      |<p><strong>running:</strong> $running</p>
+      |<p><strong>completed:</strong> $completed</p>
+      |<p><strong>max concurrent:</strong> $maxConcurrentValue</p>
     """.stripMargin
+  }
+
+  /**
+   * Start the background process worker
+   */
+  private def startWorker: IO[Unit] = {
+    processWorker.start.void
+  }
+}
+
+object VolatileServerState {
+  private val MAX_CONCURRENT_PROCESSES: Long = 3
+
+  /**
+   * Create a new server state instance with all necessary components
+   */
+  def create(): IO[VolatileServerState] = {
+    for {
+      semaphore <- Semaphore[IO](MAX_CONCURRENT_PROCESSES) // Max 3 concurrent processes
+      processQueue <- Queue.unbounded[IO, ProcessRequest]
+      resultMap <- Ref.of[IO, Map[Int, String]](Map.empty)
+      state = new VolatileServerState(semaphore, processQueue, resultMap)
+      _ <- state.startWorker // Start the background worker
+    } yield state
   }
 }
